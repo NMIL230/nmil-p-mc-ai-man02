@@ -1,0 +1,25 @@
+# log files
+*.json
+*.bson
+*.zip
+*.sh
+*.tar.gz
+*._.DS_Store
+*.DS_Store
+__MACOSX/
+
+# viz files
+*.pdf
+*.png
+*jpg
+*.jpeg
+*.gif
+*.mp4
+*.dat
+*.pptx
+*.csv
+*.txt
+
+# python types
+*.pyc
+*.pkl
