@@ -48,10 +48,12 @@ from src.analysis.extract_survey_subset import (
 )
 from src.utils.data.common_inputs import build_fits_and_pairs
 from src.utils.data.pairing import filter_valid_psi_pairs
-from src.utils.data.pids import normalize_pid
+from src.utils.data.pids import normalize_pid, base_pid
 
 SURVEY_DIR = DEFAULT_SURVEY_CSV.parent
 SURVEY_GLOB = "Active+Machine+Learning+for+Evaluating+Cognition_*.csv"
+
+EXCLUDED_DEMOGRAPHIC_BASE_PIDS = {"AMLEC_013", "AMLEC_017", "AMLEC_029"}
 
 
 class ReportError(RuntimeError):
@@ -148,6 +150,69 @@ def _collect_demographics(
         }
     ).sort_values("pid")
     return result
+
+
+def _resolve_base_pid(pid: Any) -> Optional[str]:
+    if pid is None:
+        return None
+    text = str(pid).strip()
+    if not text or text.lower() == "nan":
+        return None
+    base = base_pid(text)
+    if base:
+        return base
+    normalized = normalize_pid(text)
+    if normalized:
+        return base_pid(normalized) or normalized
+    return text
+
+
+def _drop_excluded_demographic_pids(
+    survey_df: pd.DataFrame,
+    excluded_bases: Iterable[str],
+) -> pd.DataFrame:
+    excluded_set = {str(item).strip() for item in excluded_bases if str(item).strip()}
+    if not excluded_set:
+        return survey_df.copy()
+    base_series = survey_df["pid_canonical"].apply(_resolve_base_pid)
+    mask = base_series.isin(excluded_set)
+    return survey_df.loc[~mask].copy()
+
+
+def build_demographic_summary_table(
+    survey_df: pd.DataFrame,
+    *,
+    excluded_bases: Iterable[str] = EXCLUDED_DEMOGRAPHIC_BASE_PIDS,
+) -> pd.DataFrame:
+    filtered = _drop_excluded_demographic_pids(survey_df, excluded_bases)
+    categories = [
+        ("Sex/Gender", SEX_COLUMN_LABEL),
+        ("Hispanic/Latino", HISPANIC_COLUMN_LABEL),
+        ("Race", RACE_COLUMN_LABEL),
+        ("Education", DEGREE_COLUMN_LABEL),
+    ]
+    rows: List[Dict[str, Any]] = []
+    for category_name, column_label in categories:
+        if column_label not in filtered:
+            continue
+        series = filtered[column_label].dropna()
+        series = series.astype(str).str.strip()
+        series = series[series != ""]
+        if series.empty:
+            continue
+        counts = series.value_counts(sort=True)
+        total = int(counts.sum())
+        for level, count in counts.items():
+            percent = round((count / total) * 100.0, 2) if total else 0.0
+            rows.append(
+                {
+                    "category": category_name,
+                    "level": level,
+                    "n": int(count),
+                    "percent": percent,
+                }
+            )
+    return pd.DataFrame(rows, columns=["category", "level", "n", "percent"])
 
 
 def _collect_exclusion_info(pickle_path: Optional[Path]) -> Dict[str, Any]:
@@ -394,8 +459,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--table-out",
         type=Path,
-        default=Path("results/demographics/demographics_table.csv"),
-        help="CSV path for the demographics table with exclusion annotations",
+        default=None,
+        help="Optional CSV path for the demographics table with exclusion annotations",
+    )
+    parser.add_argument(
+        "--summary-out",
+        type=Path,
+        default=Path("results/demographics/demographic_summary.csv"),
+        help="CSV path for aggregated demographics counts by category",
     )
     return parser.parse_args(argv)
 
@@ -441,6 +512,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         args.table_out.parent.mkdir(parents=True, exist_ok=True)
         table_df.to_csv(args.table_out, index=False)
         print(f"Demographic table written to {args.table_out}")
+
+    summary_df = build_demographic_summary_table(survey_df)
+    if args.summary_out:
+        args.summary_out.parent.mkdir(parents=True, exist_ok=True)
+        summary_df.to_csv(args.summary_out, index=False)
+        print(f"Demographic summary table written to {args.summary_out}")
 
     report_text = build_report(survey_df, demographics, alignment_df, alignment_notes)
 

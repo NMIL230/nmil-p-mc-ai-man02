@@ -89,6 +89,7 @@ SCRIPT_CONFIGS: Dict[str, ScriptConfig] = {
     "FigS01": ScriptConfig(enabled=False, overrides={}),
     "FigS02": ScriptConfig(enabled=False, overrides={}),
     "SurveyAnalysis": ScriptConfig(overrides={}),
+    "DemographicsSummary": ScriptConfig(overrides={}),
     "TrialStats": ScriptConfig(overrides={}),
 }
 
@@ -524,6 +525,30 @@ def build_survey_args(global_opts: Dict[str, Any], overrides: Dict[str, Any]) ->
     return args
 
 
+def build_demographics_args(global_opts: Dict[str, Any], overrides: Dict[str, Any]) -> List[str]:
+    args: List[str] = []
+    survey_csv = get_option(global_opts, overrides, "survey_csv")
+    if survey_csv:
+        args.extend(["--survey-csv", str(survey_csv)])
+    survey_pickle = get_option(global_opts, overrides, "survey_pickle")
+    if survey_pickle:
+        args.extend(["--survey-pickle", str(survey_pickle)])
+    pickle_path = get_option(global_opts, overrides, "pickle")
+    if pickle_path:
+        args.extend(["--pickle", str(pickle_path)])
+    summary_default = REPO_ROOT / "manuscript_analysis" / "demographic_summary.csv"
+    summary_out = get_option(global_opts, overrides, "summary_out", summary_default)
+    if summary_out:
+        args.extend(["--summary-out", str(summary_out)])
+    table_out = get_option(global_opts, overrides, "table_out")
+    if table_out:
+        args.extend(["--table-out", str(table_out)])
+    out_path = get_option(global_opts, overrides, "out")
+    if out_path:
+        args.extend(["--out", str(out_path)])
+    return args
+
+
 def build_trial_stats_args(global_opts: Dict[str, Any], overrides: Dict[str, Any]) -> List[str]:
     args: List[str] = []
     if not get_option(global_opts, overrides, "apply_validity_mask", True):
@@ -618,6 +643,13 @@ TASKS: List[Task] = [
         description="Survey correlates vs classic performance analysis.",
         builder=build_survey_args,
         outputs=[REPO_ROOT / "manuscript_analysis" / "Survey Data and Performance"],
+    ),
+    Task(
+        name="DemographicsSummary",
+        script=REPO_ROOT / "src/analysis/generate_demographics_report.py",
+        description="Survey demographics summary export.",
+        builder=build_demographics_args,
+        outputs=[REPO_ROOT / "manuscript_analysis"],
     ),
     Task(
         name="TrialStats",
