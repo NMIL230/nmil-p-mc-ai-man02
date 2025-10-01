@@ -5,13 +5,9 @@ from __future__ import annotations
 
 import argparse
 import math
-import numpy as np
-import random
 import sys
 from pathlib import Path
 from typing import Dict, Sequence
-
-import matplotlib.pyplot as plt
 
 # Ensure repo root on sys.path for direct execution
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -28,127 +24,18 @@ from src.utils.statistics.outliers import filter_pids_by_pair_diffs
 from src.utils.reporting.reporting import validity_removed_pids, format_validity_removed_line
 from src.utils.reporting.reporting import format_validity_details
 from src.utils.plotting.plotting import (
-    FIG_SIZE,
-    MARKER_SIZE,
-    MARKER_ALPHA,
-    MARKER_COLOR,
-    SUPER_TITLE_FONT_SIZE,
     CORR_OUTLIER_METHOD_DEFAULT,
     CORR_IQR_MULTIPLIER_DEFAULT,
     CORR_ZSCORE_THRESHOLD_DEFAULT,
-    CORR_JITTER_CLOSE_THRESH,
-    CORR_JITTER_MAX_JITTER,
-    AXIS_LABEL_FONT_SIZE,
-    DEFAULT_FIGURE_DPI,
-    _style_spines_and_ticks,
 )
 from src.utils.plotting.constants import PSI_THETA_TEX
 from src.utils.reporting.formatting import format_stat
-from scipy import stats as scipy_stats
 from src.utils.plotting.figure_naming import figure_output_dir, figure_output_stem
 
 FIGURE_KEY = "Fig03"
 FIGURE_STEM = figure_output_stem(FIGURE_KEY)
 DEFAULT_FIGURE_OUTPUT = figure_output_dir(FIGURE_KEY)
 FIGURE_NAME = DEFAULT_FIGURE_OUTPUT.name
-
-
-def plot_avg_slope_vs_classic(
-    avg_slopes: Dict[str, float],
-    classic_scores: Dict[str, float],
-    output_dir: Path,
-    filename_stem: str = f"{FIGURE_STEM}_avg-slope_vs_classic",
-) -> None:
-    common = sorted({pid for pid in avg_slopes if pid in classic_scores})
-    if not common:
-        print("Supplemental slope plot: no overlapping participants after filtering.")
-        return
-
-    x_vals = []
-    y_vals = []
-    for pid in common:
-        x = float(avg_slopes.get(pid, float("nan")))
-        y = float(classic_scores.get(pid, float("nan")))
-        if np.isfinite(x) and np.isfinite(y):
-            x_vals.append(x)
-            y_vals.append(y)
-
-    if len(x_vals) < 2:
-        print("Supplemental slope plot: insufficient finite data to plot distribution.")
-        return
-
-    x_arr = np.asarray(x_vals, dtype=float)
-    y_arr = np.asarray(y_vals, dtype=float)
-
-    pearson_r, pearson_p = scipy_stats.pearsonr(x_arr, y_arr)
-    spearman_res = scipy_stats.spearmanr(x_arr, y_arr, nan_policy="omit")
-    spearman_rho = float(spearman_res.correlation)
-    spearman_p = float(spearman_res.pvalue)
-
-    x_plot = x_arr.copy()
-    y_plot = y_arr.copy()
-    used = np.zeros(len(x_plot), dtype=bool)
-    for i in range(len(x_plot)):
-        if used[i]:
-            continue
-        cluster = [i]
-        for j in range(i + 1, len(x_plot)):
-            if used[j]:
-                continue
-            if (
-                abs(x_plot[i] - x_plot[j]) < CORR_JITTER_CLOSE_THRESH
-                and abs(y_plot[i] - y_plot[j]) < CORR_JITTER_CLOSE_THRESH
-            ):
-                cluster.append(j)
-        if len(cluster) > 1:
-            for idx in cluster:
-                used[idx] = True
-                x_plot[idx] += random.uniform(-CORR_JITTER_MAX_JITTER, CORR_JITTER_MAX_JITTER)
-                y_plot[idx] += random.uniform(-CORR_JITTER_MAX_JITTER, CORR_JITTER_MAX_JITTER)
-        else:
-            used[i] = True
-
-    fig, ax = plt.subplots(figsize=(FIG_SIZE, FIG_SIZE))
-    ax.scatter(
-        x_plot,
-        y_plot,
-        s=MARKER_SIZE,
-        alpha=MARKER_ALPHA,
-        color=MARKER_COLOR,
-        edgecolor="white",
-        linewidth=0.8,
-        zorder=3,
-    )
-
-    ax.set_xlim(-2.5, 0.0)
-    ax.set_ylim(5.0, 17.0)
-    ax.set_xticks(np.arange(-2.5, 0.01, 0.5))
-    ax.set_yticks([5.0, 9.0, 13.0, 17.0])
-    ax.set_xlabel("Average adaptive slope (ΔK/ΔL)", fontsize=AXIS_LABEL_FONT_SIZE)
-    ax.set_ylabel(f"Classic {PSI_THETA_TEX}", fontsize=AXIS_LABEL_FONT_SIZE)
-    ax.set_title(f"Adaptive Slope vs. Classic {PSI_THETA_TEX}", fontsize=SUPER_TITLE_FONT_SIZE)
-    _style_spines_and_ticks(ax)
-
-    fig.tight_layout()
-
-    print(
-        "Avg slope vs classic stats: n={}, r={}, p={}, rho={}, rho_p={}".format(
-            len(x_arr),
-            format_stat(pearson_r, mode="decimal"),
-            format_stat(pearson_p, mode="scientific"),
-            format_stat(spearman_rho, mode="decimal"),
-            format_stat(spearman_p, mode="scientific"),
-        )
-    )
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    png_path = output_dir / f"{filename_stem}.png"
-    pdf_path = output_dir / f"{filename_stem}.pdf"
-    fig.savefig(png_path, dpi=DEFAULT_FIGURE_DPI, bbox_inches="tight")
-    fig.savefig(pdf_path, dpi=DEFAULT_FIGURE_DPI, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Wrote supplemental avg-slope vs classic figure to {png_path.parent}")
-
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate adaptive scatter + posterior50 figure")
@@ -284,8 +171,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         ncols_override=args.ncols,
     )
     print(f"Wrote {FIGURE_NAME} adaptive scatter + posterior50 figure to {args.out}")
-
-    plot_avg_slope_vs_classic(avg_slopes, classic_scores, args.out, filename_stem=f"{FIGURE_STEM}_avg-slope_vs_classic")
 
 
 if __name__ == "__main__":  # pragma: no cover
